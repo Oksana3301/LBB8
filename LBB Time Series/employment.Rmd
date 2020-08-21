@@ -1,0 +1,450 @@
+---
+title: "Time Series Canadian Employment"
+author: "Atika Dewi Suryani"
+date: "`r format(Sys.Date(), '%B %e, %Y')`"
+output :
+  html_document:
+  code_folding : hide
+  toc: yes
+  toc_float:
+    collapsed: yes
+  number_sections: false
+  toc_depth: 3
+  theme: flatly
+  highlight: breezedark
+  df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = "center", warning = F, message = F)
+```
+
+**Intro**
+
+This is the data from 1956-1975 of Canada Employment.
+
+    - Time Series Plots
+
+    - Data Transformation and Adjustment
+
+    - Decomposition
+
+    - Simple Average
+
+    - Naive Method
+
+    - Time Series Linear Regression
+
+    - Simple Exponential Smoothing
+
+    - Holt’s Linear Trend
+
+    - Holt-Winters’ Seasonal Trend
+
+    - ETS
+
+    - ARIMA
+
+    - Neural Network Autoregression
+
+    - Forecast Accuracy Evaluation
+
+# Libraries and Setup
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(fpp)
+library(astsa)
+library(DT)
+library(dygraphs)
+library(lubridate)
+```
+
+# Load Data
+```{r}
+can <- read.csv("data/canemploy.csv")
+head(can)
+```
+**Convert data to `time series`**
+```{r}
+can.ts <- ts(can, frequency = 12, start = c(1956,1), end = c(1975,12))
+```
+
+
+# Time Series Plot
+The first thing to do with any time seriese analysis is to plot the charts.
+
+It is also a good idea to aggregate monthly production volume into quarterly and yearly volume. Depending on the business questions we try to answer, different time scales can be very useful.
+```{r}
+can.ts.qtr <- aggregate(can.ts, nfrequency=4)
+can.ts.yr <- aggregate(can.ts, nfrequency=1)
+plot.ts(can.ts[,2], main = "Monthly Employment in Canada from 1956-1975", xlab = "Year", ylab = "ML")
+```
+```{r}
+plot.ts(can.ts.qtr[,2], main = "Quarterly Employment in in Canada from 1956-1975", xlab = "Year", ylab = "ML")
+```
+```{r}
+plot.ts(can.ts.yr[,2], main = "Yearly Employment in in Canada from 1956-1975", xlab = "Year", ylab = "ML")
+```
+
+**Summary**
+As we can see there was a strong growth from 1965 to 1975 then the production was slowing increasing with higher volatility. We can also see very strong seasonality which is obvious for the employment.
+
+Next step we want to take a look at seasonality in more detail.
+
+## Data Seasonality
+
+Yearly Plot
+```{r}
+seasonplot(can.ts[,2], year.labels = TRUE, year.labels.left=TRUE, col=1:40, pch=19, main = "Monthly Employment in Canada from 1956-1975 - Seasonplot", xlab = "Month", ylab = "ML", palette = "Dark2")
+```
+Monthly Plot
+```{r}
+monthplot(can.ts[,2], main = "Monthly Employment in Canada from 1956-1975 - Seasonplot", xlab = "Month", ylab = "ML")
+```
+```{r}
+boxplot(can.ts[,2] ~ cycle(can.ts[,2]), xlab = "Month", ylab = "ML", main = "Monthly Employment in Canada from 1956-1975 - Boxplot")
+```
+
+**Summary**
+3 different charts all give us the level among different months, but also the range and variation. We can also see the variation and range within the same month.
+
+Next, we will look at the trend more closely. Moving average smoothing is a great way to exame the trend. By adjusting how many months to calculate the average, we can control the smoothness of the trend line
+
+## Moving Average
+```{r}
+par(mfrow = c(2,2))
+plot(can.ts[,2], col="gray", main = "1 Year Moving Average Smoothing")
+lines(ma(can.ts[,2], order = 12), col = "red", lwd=3)
+plot(can.ts[,2], col="gray", main = "3 Year Moving Average Smoothing")
+lines(ma(can.ts[,2], order = 36), col = "blue", lwd=3)
+plot(can.ts[,2], col="gray", main = "5 Year Moving Average Smoothing")
+lines(ma(can.ts[,2], order = 60), col = "green", lwd=3)
+plot(can.ts[,2], col="gray", main = "10 Year Moving Average Smoothing")
+lines(ma(can.ts[,2], order = 120), col = "yellow4", lwd=3)
+```
+# Transformation Adjustment
+Sometimes, adjusting and transformating data can make the historical data less complex so a simpler forecast model can be used. It is also a good idea to remove the underline factors affected the time series like workday, inflation, population, and currancy exchange rate…ect.
+
+Calendar Adjustment
+
+Sometimes, the variances in monthly data is simple due to the different number of days in each month. If we look at the monthly canada employment data, not only the number of days in each month will impact the employment volume, but number of companies will also have a significant impact as well.
+```{r}
+plot.ts(can.ts[,2], main = "Monthly Employment in Canada from 1956-1975", xlab = "Year", ylab = "ML")
+```
+Logarithm Adjustment
+
+Logarithm transformation is most used mathematical transformation not only in time series but any other regression models or data visualization. In time series analysis, by applying log transformation, it will stablize the variance. Hence transform exponential trend line into a linear line. It is used before differencing data to improve stationarity.
+
+```{r}
+plot.ts(log(can.ts[,2]), main = "Log Transformated Monthly Employment in Canada from 1956-1975", xlab = "Year", ylab = "ML")
+```
+## Decomposition
+After just looking at the different plots, we normally can get a good sense on how the time series behaves and the different components within the data. Decomposition is a tool that we can seperate different components in a time series data so we can see trend, seasonality, and random noises individually.
+
+STL Decomposition
+
+```{r}
+plot(stl(can.ts[,2], s.window="periodic"))
+```
+
+**Summary**
+From this chart, we can see that the seasonaliy is slightly strong but consistant. The trend is similar to what we saw when we aggreciated the data into yearly which is that from 1965 to 1975.
+
+# Basic Models Forecast
+
+- Average : simple average of all data points
+
+- Naive Method : the last observation value
+
+- Seasonal Naive : the last observation value from previous seasonal cycle
+
+- Drift Method : forecast value increase or decrease over time based on average change in historical data
+
+```{r}
+can.fit.a <- meanf(can.ts[,2], h = 120)
+can.fit.n <- naive(can.ts[,2], h = 120)
+can.fit.sn <- snaive(can.ts[,2], h = 120)
+can.fit.dri <- rwf(can.ts[,2], h = 120, drift = TRUE)
+plot.ts(can.ts[,2], main = "Monthly Employment in Canada from 1956-1975", xlab = "Year", ylab = "ML", xlim = c(1956, 1990))
+lines(can.fit.a$mean, col = "blue")
+lines(can.fit.n$mean, col = "yellow4")
+lines(can.fit.dri$mean, col = "seagreen4")
+lines(can.fit.sn$mean, col = "red")
+legend("topleft",lty=1,col=c("blue","yellow4","seagreen4", "red"), cex = 0.75,
+       legend=c("Mean method","Naive method","Drift Naive method", "Seasonal naive method"))
+```
+In this case, all of them are not good models because of the combination of trend and seasonality. However, if you have a less complex time series, these models might be good enough. Plus, these models can also be treated as benchmark when we move to more complex models.
+
+# Regression Analysis
+## Forecast with Linear Regression
+```{r}
+can.fit.lm <- tslm(can.ts[,2] ~ trend)
+f <- forecast(can.fit.lm, h = 120, level = c(80,95))
+plot.ts(can.ts[,2], main = "Monthly Employment in Canada from 1956-1975", xlab = "Year", ylab = "ML", xlim = c(1956,1980))
+lines(f$fitted, col = "blue")
+lines(f$mean, col = "blue")
+```
+
+```{r}
+plot(can.fit.lm$fitted, can.ts[,2], main = "Scatterplot between fitted & actual values", xlab = "Fitted Value", ylab = "Actual")
+abline(0, 1, col="blue")
+```
+```{r}
+summary(can.fit.lm)
+```
+It did a good job on picking up the trend. However, we know that there is seasonality as well. So we will add another variable into the regression
+
+## Forecast with Linear Regression and Seasonality
+```{r}
+can.fit.lm2 <- tslm(can.ts[,2] ~ trend + season)
+summary(can.fit.lm2)
+```
+```{r}
+plot.ts(can.ts[,2], main = "Monthly Employment in Canada from 1956-1975", xlab = "Year", ylab = "ML")
+lines(can.fit.lm2$fitted.values, col = "blue")
+```
+```{r}
+plot(can.fit.lm2$fitted, can.ts[,2], main = "Scatterplot between fitted & actual values", xlab = "Fitted Value", ylab = "Actual")
+abline(0, 1, col="blue")
+```
+```{r}
+f <- forecast(can.fit.lm2, h = 120, level = c(80,95))
+plot.ts(can.ts[,2], main = "Monthly Employment in Canada from 1956-1975", xlab = "Year", ylab = "ML", xlim = c(1954,1980))
+lines(f$mean, col = "blue")
+```
+## Parabola
+We can see the trend clearly not a straight line. Therefore, we can add a new input variable t^2 to create a parabola.
+```{r}
+t <- seq(1956, 1995.2, length = length(can.ts[,2]))
+t2 <- t^2
+can.fit.lm3 <- tslm(can.ts[,2] ~ t + t2)
+plot.ts(can.ts[,2], main = "Monthly Employment in Canada from 1956-1975", xlab = "Year", ylab = "ML")
+lines(can.fit.lm3$fit, col = "blue")
+```
+
+```{r}
+sin.t <- sin(2*pi*t)
+cos.t <- cos(2*pi*t)
+can.fit.lm4 <- tslm(can.ts[,2] ~ t + t2 + sin.t + cos.t)
+plot.ts(can.ts[,2], main = "Monthly Employment in Canada from 1956-1975", xlab = "Year", ylab = "ML")
+lines(can.fit.lm4$fit, col = "blue")
+```
+# Exponential Smoothing
+
+Exponential smoothing is basically taking weighted average of previoud observations. By adjusting alpha, beta, and gamma parameters, we can control the weights for level, trend, and seasonality.
+
+**Simple Exponential Smoothing** simple exponential smoothing is used for the time seriese without trend and seasonality. So I only picked the time series from `1975 to 1980` so the analysis can make sense
+```{r}
+can.ts2 <- window(can.ts, start = 1975)
+plot.ts(can.ts2[,2], main = "Predict Monthly Employment in Canada from 1975-1980", xlab = "Year", ylab = "ML")
+```
+```{r}
+can.fit.ses1 <- ses(can.ts2[,2], alpha = 0.2, initial = "simple", h = 12)
+can.fit.ses2 <- ses(can.ts2[,2], alpha = 0.6, initial = "simple", h = 12)
+can.fit.ses3 <- ses(can.ts2[,2], h = 12)
+plot(can.fit.ses1, plot.conf=FALSE, type="o", main = "Monthly Employment in Canada from 1956-1975", xlab = "Year", ylab = "ML")
+lines(can.fit.ses1$fitted, col = "blue", type="o")
+lines(can.fit.ses2$fitted, col = "green", type="o")
+lines(can.fit.ses3$fitted, col = "red", type="o")
+lines(can.fit.ses1$mean, col = "blue", type="o")
+lines(can.fit.ses2$mean, col = "green", type="o")
+lines(can.fit.ses3$mean, col = "red", type="o")
+legend("topleft",lty=1, col=c(1,"blue","green","red"), 
+       c("data", expression(alpha == 0.2), expression(alpha == 0.6),
+         expression(alpha == 0.87)), pch = 1)
+```
+Simple exponential smoothing only conside level. so, we now will use another model that can capture trend as well.
+
+## Holt’s Linear Trend Method
+
+In the Holt’s linear trend models, there are 3 variations.
+
+    - Holt’s Linear Trend
+    
+    - Expontential Linear Trend - The level and slop are mutipled instead of added in Holt’s model
+    
+    - Damped Trend - The trend became flat after a period increase or decrease. It is usually very useful in the business world since typical growth or decline will stop after a certain period of time.
+```{r}
+can.ts.yrl <- aggregate(can.ts, nfrequency=1)
+can.ts.yrl <- window(can.ts.yrl , start = 1956, end = 1975)
+can.fit.holt1 <- holt(can.ts.yrl[,2], alpha = 0.2, beta = 0.2, initial = "simple", h = 6)
+can.fit.holt2 <- holt(can.ts.yrl[,2], alpha = 0.2, beta = 0.2, initial = "simple", exponential = TRUE, h = 6)
+can.fit.holt3 <- holt(can.ts.yrl[,2], alpha = 0.2, beta = 0.2, initial = "simple", damped = TRUE, h = 6)
+```
+```{r}
+## "simple", : Damped Holt's method requires optimal initialization
+
+plot(can.fit.holt1, type="o", fcol="white", main = "Monthly Employment in Canada from 1956-1975", xlab = "Year", ylab = "ML", plot.conf=FALSE)
+lines(can.fit.holt1$fitted, col = "blue")
+lines(can.fit.holt2$fitted, col = "green")
+lines(can.fit.holt3$fitted, col = "red")
+lines(can.fit.holt1$mean, col = "blue", type="o")
+lines(can.fit.holt2$mean, col = "green", type="o")
+lines(can.fit.holt3$mean, col = "red", type="o")
+legend("topleft", lty = 1, col = c("black", "blue", "green", "red"), 
+       c("Data", "Holt's Linear Trend", "Exponential Trend", "Damped Trend"))
+```
+## Holt-Winters’ Seasonal Trend
+
+This is an extention from Holt’s model by adding seasonal parameter to capture seasonality
+```{r}
+can.ts3 <- window(can.ts, start = 1956, end = 1975)
+can.ts.qtr <- aggregate(can.ts3, nfrequency=4)
+can.fit.hw1 <- hw(can.ts.qtr[,2], h = 20, seasonal = "additive")
+can.fit.hw2 <- hw(can.ts.qtr[,2], h = 20, seasonal = "multiplicative")
+
+plot(can.fit.hw1, type="o", fcol="white", main = "Quarterly Employment in Canada from 1956-1975", xlab = "Year", ylab = "ML", plot.conf=FALSE)
+lines(can.fit.hw1$fitted, col = "blue", lty=2)
+lines(can.fit.hw2$fitted, col = "red", lty=2)
+lines(can.fit.hw1$mean, col = "blue", type="o")
+lines(can.fit.hw2$mean, col = "red", type="o")
+legend("topleft", lty = 1, pch = 1, col = c("black", "blue", "red"),
+       c("Data", "Holt Winters' Additive", "Holt Winters' Multiplicative"))
+```
+## ETS
+People often feel overwhelmed by which model to use since there are 30 different models to choose from. Luckly, the ETS function in R helps us to estimate the best model which is the one with least AIC score
+```{r}
+can.fit.ets <- ets(can.ts.qtr[,2])
+plot(forecast((can.fit.ets), h = 8), xlab = "Year", ylab = "ML")
+```
+```{r}
+summary(can.fit.ets)
+```
+So we can see that ETS estimate ETS(M,A,M) for us which is multiplicative errors with Multiplicative Holt-Winters’ method. We can also fit our own model and compare to the estimate model
+
+```{r}
+can.fit.ets2 <- ets(can.ts.qtr[,2], model = "MAN")
+plot(forecast((can.fit.ets2), h = 8), xlab = "Year", ylab = "ML")
+```
+```{r}
+summary(can.fit.ets2)
+```
+It is obvious that Holt’t trend only model will not do as well as seasonality model given the highly seasonal trend in our data. It can be proved by looking at the AIC for these two models. AIC for Holt’s trend model is 1227.372 compared to 1071.076 from estimate model.
+
+# ARIMA
+
+## Autocorrelation
+Autoccorrelation is basically to see if the consecutive observations are correlated. If there is correlation, we can run a regression using current observation as depending variable and previous observation as indenpending variable.
+
+There a couple of ways to help to see if there is correlation between lags.
+```{r}
+cor_can <- cbind(can.ts[-1,2], can.ts[-468,2])
+head(cor_can)
+```
+
+```{r}
+plot(cor_can, main = "Scatterplot - Lag 1", xlab = "Lag 0", ylab = "Lag 1")
+```
+```{r}
+cor(cor_can)
+```
+As we can see there is correlation of 1 and 0.9 which means there is strong relationship between consecutive observations.
+
+```{r}
+lag.plot(can.ts[,2], lags = 9, do.lines = FALSE)
+```
+We can see the correlation is declining from lag 1 to lag 7 which makes sense since the correlation normally diminished by time. We can also see seasonality affect here since the correlation is worse from lag 5 to lag 8 than from lag 9.
+
+Another very useful tool to look at the correlation from lag is acf function. As we can see that there are very strong relationship from lag 1 to lag 9 and we can also see the seasonal effect as well.
+
+```{r}
+acf(can.ts[,2])
+```
+## Differencing
+
+Differencing computes the differences between consecutive observations. By differencing the time series data, we can remove the trend and seasonality.8
+```{r}
+d_can <- diff(log(can.ts.qtr[,2]))
+plot(d_can, main = "Differencing logged Quarterly Employment in Canada")
+```
+```{r}
+dd_can <- diff(d_can, lag = 4)
+plot(dd_can, main = "Differencing the difference logged Quarterly Employment in Canada")
+```
+The first differencing removed the trend but we can still see some seasonality affect. By doing another differencing with lag 12, we now removed the seasonality. Time series now should be now stationary. We can also see that from ACF charts
+
+```{r}
+acf2(d_can)
+
+```
+
+```{r}
+acf2(dd_can)
+```
+
+## ARIMA Model Selection
+
+By analyzing the ACF and PACF charts after the differencing, we can try to fit the model by choosing p,d,q,P,D,Q,S parameters in ARIMA(p,d,q)(P,D,Q)S function.
+
+We now can try to pick the best p,d,q,P,D,Q,S parameters according ACF & PACF charts.
+
+    Seasonal - both ACF and PACF tail off at 2nd seasonal lag suggests seasonal ARMA(2,2) model
+    Non-seasonal - ACF tails off and PACF cuts off at 2nd lag suggests AR(2) model
+
+```{r}
+sarima(can.ts.qtr[,2], 2, 1, 0, 2, 1, 2,1)
+```
+By looking at the residual diagnostics, it looks like we have a workable model here since the residuals seem normally distributed, ACF of the residuals are within 95% confidence interval, and p-values are above 0.05. Therefore, we can now use this ARIMA model to forecast.
+```{r}
+can.fit.arima <- arima(can.ts.qtr[,2], order = c(2, 1, 0), seasonal = c(2, 1, 2))
+fcst.arima <- forecast(can.fit.arima, h = 20)
+plot(fcst.arima)
+```
+## Auto.ARIMA
+
+Just like ETS, there is also a function auto.arima in R that will select the best estimated ARIMA model for us (the one with least AIC score)
+```{r}
+can.fit.arima.auto <- auto.arima(can.ts.qtr[,2])
+can.fit.arima.auto
+```
+```{r}
+fcst.auto <- forecast(can.fit.arima.auto, h = 20)
+plot(fcst.auto)
+```
+So we now compare these two ARIMA models. As we can see that they produced very similar results.
+```{r}
+plot(can.ts.qtr[,2], main = "Quarterly Employment in Canada from 1956-1975", xlab = "Year", ylab = "ML", xlim = c(1956, 1980), ylim = c(200,2000))
+lines(fcst.auto$mean, col = "blue", type = "o")
+lines(fcst.arima$mean, col = "red", type = "o")
+legend("topleft", lty = 1, pch = 1, col = c("blue", "red"),
+       c("ARIMA(1,1,0)(1,1,2)4", "ARIMA(1,1,0)(2,1,1)4"))
+```
+# Neural Network Autoregression
+Neural nework is probably one of the hottest machine learning algorithms which models human brain and neural system. The lagged value can be used as inputs to a neural network similar to autoregression model
+```{r}
+can.fit.nn <- nnetar(can.ts.qtr[,2])
+plot(forecast(can.fit.nn, h = 20), xlab = "Year", ylab = "ML", xlim = c(1960, 1980), ylim = c(700, 2000))
+```
+# Forecast Accuracy
+Here are some common measurements used to evaluate the forecast accracy.
+
+    **MAE - Mean absolute error**
+    
+    **RMSE - Root mean square error**
+    
+    **MAPE - Mean absolute percentage error**
+    
+    **MASE - Mean absolute scaled error**
+
+Compare forecast accuracy among 4 basic forecasting models (simple average, naive method, seasonal naive, drifted model)
+```{r}
+can.ts.ac <- window(can.ts, start = 1956, end = 1975)
+can.fit.a <- meanf(can.ts.ac[,2], h = 60)
+can.fit.n <- naive(can.ts.ac[,2], h = 60)
+can.fit.sn <- snaive(can.ts.ac[,2], h = 60)
+can.fit.dri <- rwf(can.ts.ac[,2], h = 60, drift = TRUE)
+plot.ts(can.ts[,2], main = "Monthly  Employment in Canada from 1956-1975", xlab = "Year", ylab = "ML", xlim = c(1956, 1980))
+lines(can.fit.a$mean, col = "blue")
+lines(can.fit.n$mean, col = "yellow4")
+lines(can.fit.dri$mean, col = "seagreen4")
+lines(can.fit.sn$mean, col = "red")
+legend("topleft",lty=1,col=c("blue","yellow4","seagreen4", "red"), cex = 0.75,
+       legend=c("Mean method","Naive method","Drift Naive method", "Seasonal naive method"))
+```
+Based on the graph and the understanding of the dataset, we should expect seasonl naive model is the best model.
+
+
+
+
